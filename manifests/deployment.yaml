@@ -1,0 +1,31 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  annotations:
+    app.openshift.io/route-disabled: "false"
+    app.openshift.io/vcs-ref: ""
+    app.openshift.io/vcs-uri: https://github.com/fallmo/obc-meter.git
+  labels:
+    app: obc-meter
+    app.openshift.io/runtime: golang
+  name: obc-meter
+  namespace: obc-meter
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: obc-meter
+  strategy:
+    type: RollingUpdate
+  template:
+    metadata:
+      labels:
+        app: obc-meter
+    spec:
+      serviceAccountName: obc-meter
+      containers:
+        - name: obc-meter
+          image: quay.io/mohamedf0/obc-meter:v1
+          env:
+            - name: POSTGRES_URI
+              value: fill

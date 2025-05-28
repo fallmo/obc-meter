@@ -1,0 +1,29 @@
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: obc-meter
+rules:
+  #
+  - verbs:
+      - get
+      - list
+    apiGroups:
+      - objectbucket.io
+    resources:
+      - objectbucketclaims
+  #
+  - verbs:
+      - get
+      - list
+    apiGroups:
+      - ""
+    resources:
+      - secrets
+  #
+  - verbs:
+      - get
+      - list
+    apiGroups:
+      - ""
+    resources:
+      - configmaps

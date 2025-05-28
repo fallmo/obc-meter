@@ -3,6 +3,7 @@ package utils
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 )
 
@@ -40,6 +41,11 @@ func GetBucketCurrentRecord(bucketUid string) (*Record, error) {
 	)
 
 	if err != nil {
+		// not a real error
+		if strings.Contains(err.Error(), "no rows in result set") {
+			return nil, nil
+		}
+
 		return nil, err
 	}
 
@@ -56,9 +62,9 @@ func GetBucketCurrentRecord(bucketUid string) (*Record, error) {
 }
 
 type AppendBucketUsageRecordArgs struct {
-	bucketUid    string
-	objectsCount uint64
-	bytesTotal   uint64
+	BucketUid    string
+	ObjectsCount uint64
+	BytesTotal   uint64
 }
 
 func AppendBucketUsageRecord(args AppendBucketUsageRecordArgs) (*Record, error) {
@@ -69,7 +75,7 @@ func AppendBucketUsageRecord(args AppendBucketUsageRecordArgs) (*Record, error) 
 	}
 	defer tx.Rollback(ctx)
 
-	_, err = tx.Exec(ctx, "UPDATE records SET period_end = NOW() WHERE bucket_uid = $1 AND period_end IS NULL", args.bucketUid)
+	_, err = tx.Exec(ctx, "UPDATE records SET period_end = NOW() WHERE bucket_uid = $1 AND period_end IS NULL", args.BucketUid)
 	if err != nil {
 		fmt.Println("Failed to close previous records")
 		tx.Rollback(ctx)
@@ -84,9 +90,9 @@ func AppendBucketUsageRecord(args AppendBucketUsageRecordArgs) (*Record, error) 
 		`INSERT INTO records (bucket_uid, objects_count, bytes_total)
 		VALUES ($1, $2, $3)
 		RETURNING id, period_start`,
-		args.bucketUid,
-		args.objectsCount,
-		args.bytesTotal,
+		args.BucketUid,
+		args.ObjectsCount,
+		args.BytesTotal,
 	).Scan(&id, &period_start)
 
 	if err != nil {
@@ -104,11 +110,11 @@ func AppendBucketUsageRecord(args AppendBucketUsageRecordArgs) (*Record, error) 
 
 	record := Record{
 		ID:           id,
-		BucketUid:    args.bucketUid,
+		BucketUid:    args.BucketUid,
 		PeriodStart:  period_start,
 		PeriodEnd:    nil,
-		ObjectsCount: args.objectsCount,
-		BytesTotal:   args.bytesTotal,
+		ObjectsCount: args.ObjectsCount,
+		BytesTotal:   args.BytesTotal,
 	}
 
 	return &record, nil
