@@ -17,7 +17,7 @@ func loadEnvironment() {
 }
 
 func verifyEnvironment() {
-	requiredVars := [1]string{"MONGO_URI"}
+	requiredVars := [1]string{"POSTGRES_URI"}
 
 	for i := 0; i < len(requiredVars); i++ {
 		if os.Getenv(requiredVars[i]) == "" {
@@ -29,5 +29,5 @@ func verifyEnvironment() {
 func StartupTasks() {
 	loadEnvironment()
 	verifyEnvironment()
-	ConnectDatabase()
+	ConnectPostgres()
 }

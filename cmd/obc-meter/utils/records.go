@@ -2,56 +2,114 @@ package utils
 
 import (
 	"context"
+	"fmt"
 	"time"
-
-	"go.mongodb.org/mongo-driver/v2/bson"
 )
 
 type Record struct {
-	ID           bson.ObjectID `bson:"_id,omitempty" json:"_id"`
-	BucketUid    string        `bson:"bucket_uid" json:"bucket_uid"`
-	PeriodStart  int64         `bson:"period_start" json:"period_start"`
-	PeriodEnd    *int64        `bson:"period_end" json:"period_end"`
-	ObjectsCount int32         `bson:"objects_count" json:"objects_count"`
-	BytesTotal   int64         `bson:"bytes_count" json:"bytes_count"`
+	ID           int        `json:"id"`
+	BucketUid    string     `json:"bucket_uid"`
+	PeriodStart  time.Time  `json:"period_start"`
+	PeriodEnd    *time.Time `json:"period_end"`
+	ObjectsCount uint64     `json:"objects_count"`
+	BytesTotal   uint64     `json:"bytes_count"`
 }
 
-type createArgs struct {
-	bucketId     string
-	objectsCount int32
-	bytesTotal   int64
-}
+func GetBucketCurrentRecord(bucketUid string) (*Record, error) {
+	sql := `
+		SELECT id, bucket_uid, period_start, period_end, objects_count, bytes_total
+		FROM records
+		WHERE bucket_uid = $1 AND period_end IS NULL
+		LIMIT 1
+	`
 
-func CreateRecord(args createArgs, ctx context.Context) (*Record, error) {
-	coll := *getCollection()
+	var ID int
+	var BucketUid string
+	var PeriodStart time.Time
+	var PeriodEnd *time.Time
+	var ObjectsCount uint64
+	var BytesTotal uint64
 
-	record := Record{
-		BucketUid:    args.bucketId,
-		ObjectsCount: args.objectsCount,
-		BytesTotal:   args.bytesTotal,
-		PeriodStart:  time.Now().Unix(),
-	}
-
-	res, err := coll.InsertOne(ctx, record)
+	err := pool.QueryRow(context.TODO(), sql, bucketUid).Scan(
+		&ID,
+		&BucketUid,
+		&PeriodStart,
+		&PeriodEnd,
+		&ObjectsCount,
+		&BytesTotal,
+	)
 
 	if err != nil {
 		return nil, err
 	}
 
-	record.ID = res.InsertedID.(bson.ObjectID)
+	record := Record{
+		ID:           ID,
+		BucketUid:    BucketUid,
+		PeriodStart:  PeriodStart,
+		PeriodEnd:    PeriodEnd,
+		ObjectsCount: ObjectsCount,
+		BytesTotal:   BytesTotal,
+	}
 
 	return &record, nil
 }
 
-type deltaArgs struct {
-	bucketId     string
-	objectsCount int32
-	bytesTotal   int64
+type AppendBucketUsageRecordArgs struct {
+	bucketUid    string
+	objectsCount uint64
+	bytesTotal   uint64
 }
 
-func GetDeltaRecord(args deltaArgs, ctx context.Context) *Record {
-	// coll := *getCollection()
-	// col.find({bucketId, periodEnd: {$exists: false}, $or: [{objectsCount: {$ne: args.objectsCount}}, {bytesTotal: {$ne: args.bytesTotal}}]})
+func AppendBucketUsageRecord(args AppendBucketUsageRecordArgs) (*Record, error) {
+	ctx := context.Background()
+	tx, err := pool.Begin(ctx)
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback(ctx)
 
-	return nil
+	_, err = tx.Exec(ctx, "UPDATE records SET period_end = NOW() WHERE bucket_uid = $1 AND period_end IS NULL", args.bucketUid)
+	if err != nil {
+		fmt.Println("Failed to close previous records")
+		tx.Rollback(ctx)
+		return nil, err
+	}
+
+	var id int
+	var period_start time.Time
+
+	err = tx.QueryRow(
+		ctx,
+		`INSERT INTO records (bucket_uid, objects_count, bytes_total)
+		VALUES ($1, $2, $3)
+		RETURNING id, period_start`,
+		args.bucketUid,
+		args.objectsCount,
+		args.bytesTotal,
+	).Scan(&id, &period_start)
+
+	if err != nil {
+		fmt.Println("Failed to insert new record")
+		tx.Rollback(ctx)
+		return nil, err
+	}
+
+	err = tx.Commit(ctx)
+	if err != nil {
+		fmt.Println("Failed to commit transaction")
+		tx.Rollback(ctx)
+		return nil, err
+	}
+
+	record := Record{
+		ID:           id,
+		BucketUid:    args.bucketUid,
+		PeriodStart:  period_start,
+		PeriodEnd:    nil,
+		ObjectsCount: args.objectsCount,
+		BytesTotal:   args.bytesTotal,
+	}
+
+	return &record, nil
 }
