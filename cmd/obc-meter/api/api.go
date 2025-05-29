@@ -14,7 +14,8 @@ func StartServer() {
 	}
 
 	server := &http.Server{
-		Addr: ":" + PORT,
+		Addr:    ":" + PORT,
+		Handler: getRouter(),
 	}
 
 	log.Printf("Server listening on port %v\n", PORT)

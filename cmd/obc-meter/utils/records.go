@@ -3,6 +3,7 @@ package utils
 import (
 	"context"
 	"fmt"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -118,4 +119,69 @@ func AppendBucketUsageRecord(args AppendBucketUsageRecordArgs) (*Record, error) 
 	}
 
 	return &record, nil
+}
+
+type GetBucketRecordsArgs struct {
+	Uid         string
+	From_period *time.Time
+	To_period   *time.Time
+}
+
+func GetBucketUsageRecords(args GetBucketRecordsArgs) (*[]Record, error) {
+	whereStatements := []string{"WHERE bucket_uid = $1"}
+	sqlVars := []interface{}{}
+	sqlVars = append(sqlVars, args.Uid)
+
+	if args.From_period != nil {
+		whereStatements = append(whereStatements, "(period_end > "+"$"+strconv.Itoa(len(whereStatements)+1)+" OR period_end IS NULL)")
+		sqlVars = append(sqlVars, args.From_period)
+	}
+
+	if args.To_period != nil {
+		whereStatements = append(whereStatements, "period_start < "+"$"+strconv.Itoa(len(whereStatements)+1))
+		sqlVars = append(sqlVars, args.To_period)
+	}
+
+	sql := `
+		SELECT id, bucket_uid, period_start, period_end, objects_count, bytes_total
+		FROM records
+		` + strings.Join(whereStatements, " AND ")
+
+	rows, err := pool.Query(context.TODO(), sql, sqlVars...)
+	defer rows.Close()
+
+	if err != nil {
+		fmt.Println(err)
+		return nil, err
+	}
+
+	var records []Record
+	for rows.Next() {
+		var record Record
+		err := rows.Scan(
+			&record.ID,
+			&record.BucketUid,
+			&record.PeriodStart,
+			&record.PeriodEnd,
+			&record.ObjectsCount,
+			&record.BytesTotal,
+		)
+
+		if err != nil {
+			fmt.Println(err)
+			return nil, err
+		}
+
+		if args.From_period != nil && record.PeriodStart.Before(*args.From_period) {
+			record.PeriodStart = *args.From_period
+		}
+
+		if args.To_period != nil && (record.PeriodEnd == nil || record.PeriodEnd.After(*args.To_period)) {
+			record.PeriodEnd = *&args.To_period
+		}
+
+		records = append(records, record)
+	}
+
+	return &records, nil
 }
