@@ -5,12 +5,12 @@ import (
 	"os"
 	"strings"
 
+	"github.com/fallmo/obc-meter/cmd/obc-meter/db"
 	"github.com/joho/godotenv"
 )
 
 func loadEnvironment() {
 	err := godotenv.Load()
-
 	if err != nil && !strings.Contains(err.Error(), "no such file or directory") {
 		log.Println("Error loading .env file ", err)
 	}
@@ -29,5 +29,5 @@ func verifyEnvironment() {
 func StartupTasks() {
 	loadEnvironment()
 	verifyEnvironment()
-	ConnectPostgres()
+	db.ConnectPostgres()
 }

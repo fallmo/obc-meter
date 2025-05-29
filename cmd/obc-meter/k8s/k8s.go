@@ -13,7 +13,7 @@ import (
 	"github.com/aws/aws-sdk-go/aws/credentials"
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/s3"
-	"github.com/fallmo/obc-meter/cmd/obc-meter/utils"
+	"github.com/fallmo/obc-meter/cmd/obc-meter/db"
 	obcv1alpha1 "github.com/kube-object-storage/lib-bucket-provisioner/pkg/apis/objectbucket.io/v1alpha1"
 	corev1 "k8s.io/api/core/v1"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -113,11 +113,18 @@ func connectToKubernetes() {
 
 func StartMeteringObjectBuckets() {
 	connectToKubernetes()
-	meterObjectBuckets()
+	meterObjectBuckets("automatic")
 }
 
-func meterObjectBuckets() {
+func meterObjectBuckets(trigger string) {
 	log.Println("Running Metering")
+
+	runId, err := db.OpenRun(trigger)
+	if err != nil {
+		fmt.Println(err)
+		log.Fatal("Failed to start a run\n")
+	}
+
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second*30)
 	defer cancel()
 
@@ -133,66 +140,86 @@ func meterObjectBuckets() {
 	}
 
 	log.Printf("Found '%v' ObjectBucketClaims to meter\n", len(res.Items))
+
+	runSummary := db.CloseRunArgs{
+		AllUids:       []string{},
+		FailedUids:    []string{},
+		ErrorMessages: []string{},
+	}
+
 	for i := 0; i < len(res.Items); i++ {
 		obc := res.Items[i]
-		meterObjectBucket(obc.GetName(), string(obc.GetUID()), obc.GetNamespace())
+		uid := string(obc.GetUID())
+
+		_, err := meterObjectBucket(obc.GetName(), uid, obc.GetNamespace(), *runId)
+
+		runSummary.AllUids = append(runSummary.AllUids, uid)
+
+		if err != nil {
+			runSummary.FailedUids = append(runSummary.FailedUids, uid)
+			runSummary.ErrorMessages = append(runSummary.ErrorMessages, err.Error())
+		}
 	}
+
+	err = db.CloseRun(*runId, runSummary)
 
 	log.Printf("Finished metering '%v' ObjectBucketClaims\n", len(res.Items))
 }
 
-func meterObjectBucket(name string, uid string, namespace string) { // return {succeeded? failed? changed?}
+func meterObjectBucket(name string, uid string, namespace string, runId int) (bool, error) {
 	fmt.Printf("\nMetering Bucket [Name=%v, Uid=%v, Namespace=%v]\n", name, uid, namespace)
 	keys, err := getBucketKeys(name, namespace)
 	if err != nil {
 		fmt.Println(err)
 		log.Printf("Failed to meter bucket [Name=%v, Uid=%v, Namespace=%v]\n", name, uid, namespace)
-		return
+		return false, err
 	}
 
 	config, err := getBucketConfig(name, namespace)
 	if err != nil {
 		fmt.Println(err)
 		log.Printf("Failed to meter bucket [Name=%v, Uid=%v, Namespace=%v]\n", name, uid, namespace)
-		return
+		return false, err
 	}
 
 	stats, err := getBucketStats(config, keys)
 	if err != nil {
 		fmt.Println(err)
 		log.Printf("Failed to meter bucket [Name=%v, Uid=%v, Namespace=%v]\n", name, uid, namespace)
-		return
+		return false, err
 	}
 
-	currentRecord, err := utils.GetBucketCurrentRecord(uid)
+	currentRecord, err := db.GetBucketCurrentRecord(uid)
 	if err != nil {
 		fmt.Println(err)
 		log.Printf("Failed to meter bucket [Name=%v, Uid=%v, Namespace=%v]\n", name, uid, namespace)
-		return
+		return false, err
 	}
 
 	// no previous record or previous record is changed
 	if currentRecord == nil || stats.bytesTotal != uint(currentRecord.BytesTotal) || stats.objectsCount != uint(currentRecord.ObjectsCount) {
-		record, err := utils.AppendBucketUsageRecord(utils.AppendBucketUsageRecordArgs{
+		_, err := db.AppendBucketUsageRecord(db.AppendBucketUsageRecordArgs{
 			BucketUid:    uid,
 			ObjectsCount: uint64(stats.objectsCount),
 			BytesTotal:   uint64(stats.bytesTotal),
+			RunId:        runId,
 		})
 
 		if err != nil {
 			fmt.Println(err)
 			log.Printf("Failed to meter bucket [Name=%v, Uid=%v, Namespace=%v]\n", name, uid, namespace)
-			return
+			return false, err
 		}
 
-		fmt.Println(record)
+		log.Printf("Successfully metered bucket (UPDATED) [Name=%v, Uid=%v, Namespace=%v]\n", name, uid, namespace)
+
+		return true, nil
+
 	} else {
-		fmt.Println("Unchanged")
+		log.Printf("Successfully metered bucket (UNCHANGED) [Name=%v, Uid=%v, Namespace=%v]\n", name, uid, namespace)
+		return false, nil
 	}
 
-	log.Printf("Successfully metered bucket [Name=%v, Uid=%v, Namespace=%v]\n", name, uid, namespace)
-
-	return
 }
 
 type bucketKeys struct {
