@@ -3,6 +3,8 @@ package db
 import (
 	"context"
 	"fmt"
+	"strconv"
+	"strings"
 	"time"
 )
 
@@ -60,4 +62,77 @@ func CloseRun(id int, args CloseRunArgs) error {
 	}
 
 	return nil
+}
+
+type GetRunsArgs struct {
+	Ids      *[]string
+	FromTime *time.Time
+	ToTime   *time.Time
+	Trigger  *string
+}
+
+func GetRuns(args GetRunsArgs) (*[]Run, error) {
+	whereStatements := []string{}
+	sqlVars := []interface{}{}
+
+	if args.Ids != nil {
+		whereStatements = append(whereStatements, "id = ANY($"+strconv.Itoa(len(whereStatements)+1)+")")
+		sqlVars = append(sqlVars, *args.Ids)
+	}
+
+	if args.Trigger != nil {
+		whereStatements = append(whereStatements, "trigger = $"+strconv.Itoa(len(whereStatements)+1))
+		sqlVars = append(sqlVars, *args.Trigger)
+	}
+
+	if args.FromTime != nil {
+		whereStatements = append(whereStatements, "end_time > $"+strconv.Itoa(len(whereStatements)+1))
+		sqlVars = append(sqlVars, *args.FromTime)
+	}
+
+	if args.ToTime != nil {
+		whereStatements = append(whereStatements, "start_time < $"+strconv.Itoa(len(whereStatements)+1))
+		sqlVars = append(sqlVars, *args.ToTime)
+	}
+
+	sql := `
+			SELECT id, start_time, end_time, all_uids, failed_uids, error_messages, trigger 
+			FROM runs
+			`
+
+	if len(whereStatements) > 0 {
+		sql = sql + "WHERE " + strings.Join(whereStatements, " AND ")
+	}
+
+	rows, err := pool.Query(context.TODO(), sql, sqlVars...)
+	defer rows.Close()
+
+	if err != nil {
+		fmt.Println(err)
+		return nil, err
+	}
+
+	var runs []Run
+	for rows.Next() {
+		var run Run
+		err := rows.Scan(
+			&run.ID,
+			&run.StartTime,
+			&run.EndTime,
+			&run.AllUids,
+			&run.FailedUids,
+			&run.ErrorMessages,
+			&run.Trigger,
+		)
+
+		if err != nil {
+			fmt.Println(err)
+			return nil, err
+		}
+
+		runs = append(runs, run)
+	}
+
+	return &runs, nil
+
 }

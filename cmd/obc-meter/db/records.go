@@ -129,10 +129,10 @@ func AppendBucketUsageRecord(args AppendBucketUsageRecordArgs) (*Record, error) 
 }
 
 type GetRecordsArgs struct {
-	Uids        *[]string
-	From_period *time.Time
-	To_period   *time.Time
-	RunIds      *[]string
+	Uids       *[]string
+	FromPeriod *time.Time
+	ToPeriod   *time.Time
+	RunIds     *[]string
 }
 
 func GetUsageRecords(args GetRecordsArgs) (*[]Record, error) {
@@ -149,14 +149,14 @@ func GetUsageRecords(args GetRecordsArgs) (*[]Record, error) {
 		sqlVars = append(sqlVars, *args.RunIds)
 	}
 
-	if args.From_period != nil {
+	if args.FromPeriod != nil {
 		whereStatements = append(whereStatements, "(period_end > "+"$"+strconv.Itoa(len(whereStatements)+1)+" OR period_end IS NULL)")
-		sqlVars = append(sqlVars, args.From_period)
+		sqlVars = append(sqlVars, args.FromPeriod)
 	}
 
-	if args.To_period != nil {
+	if args.ToPeriod != nil {
 		whereStatements = append(whereStatements, "period_start < "+"$"+strconv.Itoa(len(whereStatements)+1))
-		sqlVars = append(sqlVars, args.To_period)
+		sqlVars = append(sqlVars, args.ToPeriod)
 	}
 
 	sql := `
@@ -194,12 +194,12 @@ func GetUsageRecords(args GetRecordsArgs) (*[]Record, error) {
 			return nil, err
 		}
 
-		if args.From_period != nil && record.PeriodStart.Before(*args.From_period) {
-			record.PeriodStart = *args.From_period
+		if args.FromPeriod != nil && record.PeriodStart.Before(*args.FromPeriod) {
+			record.PeriodStart = *args.FromPeriod
 		}
 
-		if args.To_period != nil && (record.PeriodEnd == nil || record.PeriodEnd.After(*args.To_period)) {
-			record.PeriodEnd = *&args.To_period
+		if args.ToPeriod != nil && (record.PeriodEnd == nil || record.PeriodEnd.After(*args.ToPeriod)) {
+			record.PeriodEnd = *&args.ToPeriod
 		}
 
 		records = append(records, record)
@@ -209,12 +209,13 @@ func GetUsageRecords(args GetRecordsArgs) (*[]Record, error) {
 }
 
 type GetBucketRecordsArgs struct {
-	Uid         string
-	From_period *time.Time
-	To_period   *time.Time
-	RunIds      *[]string
+	Uid        string
+	FromPeriod *time.Time
+	ToPeriod   *time.Time
+	RunIds     *[]string
 }
 
+// redundant code, GetUsageRecords covers function
 func GetBucketUsageRecords(args GetBucketRecordsArgs) (*[]Record, error) {
 	whereStatements := []string{"WHERE bucket_uid = $1"}
 	sqlVars := []interface{}{}
@@ -225,14 +226,14 @@ func GetBucketUsageRecords(args GetBucketRecordsArgs) (*[]Record, error) {
 		sqlVars = append(sqlVars, *args.RunIds)
 	}
 
-	if args.From_period != nil {
+	if args.FromPeriod != nil {
 		whereStatements = append(whereStatements, "(period_end > "+"$"+strconv.Itoa(len(whereStatements)+1)+" OR period_end IS NULL)")
-		sqlVars = append(sqlVars, args.From_period)
+		sqlVars = append(sqlVars, args.FromPeriod)
 	}
 
-	if args.To_period != nil {
+	if args.ToPeriod != nil {
 		whereStatements = append(whereStatements, "period_start < "+"$"+strconv.Itoa(len(whereStatements)+1))
-		sqlVars = append(sqlVars, args.To_period)
+		sqlVars = append(sqlVars, args.ToPeriod)
 	}
 
 	sql := `
@@ -266,12 +267,12 @@ func GetBucketUsageRecords(args GetBucketRecordsArgs) (*[]Record, error) {
 			return nil, err
 		}
 
-		if args.From_period != nil && record.PeriodStart.Before(*args.From_period) {
-			record.PeriodStart = *args.From_period
+		if args.FromPeriod != nil && record.PeriodStart.Before(*args.FromPeriod) {
+			record.PeriodStart = *args.FromPeriod
 		}
 
-		if args.To_period != nil && (record.PeriodEnd == nil || record.PeriodEnd.After(*args.To_period)) {
-			record.PeriodEnd = *&args.To_period
+		if args.ToPeriod != nil && (record.PeriodEnd == nil || record.PeriodEnd.After(*args.ToPeriod)) {
+			record.PeriodEnd = *&args.ToPeriod
 		}
 
 		records = append(records, record)

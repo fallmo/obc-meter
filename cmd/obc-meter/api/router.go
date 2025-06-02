@@ -15,6 +15,8 @@ func getRouter() *mux.Router {
 
 	router.HandleFunc("/records", getRecords).Methods("GET")
 	router.HandleFunc("/records/{uid}", getBucketRecords).Methods("GET")
+	router.HandleFunc("/runs", getRuns).Methods("GET")
+	router.HandleFunc("/runs/{id}", getRun).Methods("GET")
 
 	return router
 }

@@ -28,8 +28,6 @@ import (
 var client *dynamic.DynamicClient
 var scheme = runtime.NewScheme()
 
-const labelKey = "meter-activated"
-
 var OBCGroupVersionResource = schema.GroupVersionResource{
 	Group:    "objectbucket.io",
 	Version:  "v1alpha1",
@@ -130,7 +128,7 @@ func meterObjectBuckets(trigger string) {
 
 	res, err := client.Resource(OBCGroupVersionResource).List(ctx, v1.ListOptions{
 		LabelSelector: labels.SelectorFromSet(map[string]string{
-			labelKey: "true",
+			getLabelKey(): "true",
 		}).String(),
 	})
 
@@ -357,4 +355,13 @@ func getEndpoint(host string, port string) string {
 		protocol += "s"
 	}
 	return protocol + "://" + host + ":" + port
+}
+
+func getLabelKey() string {
+	labelKey := os.Getenv("LABEL_KEY")
+	if labelKey != "" {
+		return labelKey
+	} else {
+		return "meter-activated"
+	}
 }
